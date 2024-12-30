@@ -1,7 +1,7 @@
 from asyncio import sleep
 from .. import loader, utils
 
-# Глобальная переменная для отслеживания спама
+# Глобальная переменная для отслеживания активного спама
 active_spam = {}
 
 def register(cb):
@@ -30,62 +30,61 @@ class NNSpamMod(loader.Module):
         if not reply:
             await message.edit("<b>Кого спамить? Ответь на сообщение пользователя!</b>")
             return
-        
+
+        chat_id = message.chat_id  # Используем chat_id как ключ для отслеживания
         user_id = reply.sender_id
         args = utils.get_args_raw(message)
-        
+
         if not args:
-            await message.edit("<b>Не указано количество! Спамлю бесконечно...</b>")
-            count = None  # Спам будет бесконечным
+            count = None  # Если количество не указано, делаем бесконечный спам
+            text = "Бесконечный спам!"  # Текст по умолчанию
         else:
             args = args.split(" ", 1)
             try:
-                count = int(args[0]) if args[0].isdigit() and int(args[0]) > 0 else 50
-                if len(args) > 1:
-                    text = args[1].strip()
-                else:
-                    await message.edit("<b>Укажи текст для спама!</b>")
-                    return
+                count = int(args[0]) if args[0].isdigit() else None
+                text = args[1].strip() if len(args) > 1 else args[0].strip()
             except ValueError:
                 await message.edit("<b>Некорректный формат. Используй: .nnSpam <количество> [тег] <текст></b>")
                 return
-        
+
+        # Обработка тега
         if "|" in text:
             tag, text = text.split("|", 1)
             tag = tag.strip()
         else:
             tag = None
-        
+
+        # Формируем сообщение
         if tag:
             formatted_message = f"<a href=\"tg://user?id={user_id}\">{tag}</a>: {text.strip()}"
         else:
             formatted_message = f"<a href=\"tg://user?id={user_id}\">{text.strip()}</a>"
-        
-        # Устанавливаем активный спам для данного пользователя
-        active_spam[user_id] = True
+
+        # Запускаем спам
+        active_spam[chat_id] = True
         await message.edit("<b>Начинаю спам!</b>")
 
-        # Бесконечный цикл или ограниченный, в зависимости от наличия count
         if count is None:
-            while active_spam.get(user_id, False):
+            # Бесконечный спам
+            while active_spam.get(chat_id, False):
                 await message.client.send_message(message.to_id, formatted_message)
                 await sleep(0.3)
         else:
-            for i in range(count):
-                if not active_spam.get(user_id, False):
+            # Ограниченный спам
+            for _ in range(count):
+                if not active_spam.get(chat_id, False):  # Проверка на остановку
                     break
                 await message.client.send_message(message.to_id, formatted_message)
                 await sleep(0.3)
 
-        # Завершаем спам
+        active_spam[chat_id] = False
         await message.edit("<b>Спам завершён!</b>")
-        active_spam[user_id] = False
 
     async def NnOffcmd(self, message):
         """Остановить спам"""
-        user_id = message.sender_id
-        if active_spam.get(user_id, False):
-            active_spam[user_id] = False
+        chat_id = message.chat_id
+        if active_spam.get(chat_id, False):
+            active_spam[chat_id] = False
             await message.edit("<b>Спам остановлен!</b>")
         else:
             await message.edit("<b>Спам не активен!</b>")
